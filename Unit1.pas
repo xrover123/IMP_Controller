@@ -39,6 +39,7 @@ type
     ConnectStr: String;
     sDBN, sDBU, sDBP: String;
     RunProgTime: integer;
+    AnswerLog: String;
     { Private declarations }
   public
     { Public declarations }
@@ -47,6 +48,7 @@ type
 var
   Main: TMain;
   T1,T2: TDateTime;
+  type EMyError01 = class(Exception);
 
 implementation
 uses Unit2, EasyCript, SearchFileByMask;
@@ -159,6 +161,8 @@ procedure TMain.INIT;
   FN:=ExtractFilePath(ParamStr(0));
   INI := TIniFile.Create(FN+'exchange.ini');
 
+  AnswerLog := trim(INI.ReadString('OTHERS','IMP_ANSW','answer.tmp'));//Ответ от программы импорта
+
   SH_DAY := trim(INI.ReadString('SHEDULER','IMP_DEY','1,2,3,4,5,6'));
   SH_BGN := trunc(getTime(trim(INI.ReadString('SHEDULER','IMP_BGN','00:00')),sErr)*24*60*60);
   if sErr<>'' then LogWrite(sErr + ' в параметре "IMP_BGN" секции "SHEDULER" конфигурационного файла "exchange.ini".');
@@ -247,10 +251,21 @@ procedure TMain.INIT;
 
 procedure TMain.RunProg; //Основная процедура обработки файлов
   const INIFN = 'files.ini';
-  var Files, TMP_F: TStringList;
+  var Files, TMP_F, ANSW: TStringList;
       i,j: integer;
       FName, TMP_FILE, FN: String;
       SX, ISD: String;
+  procedure CancelMove;
+    var i: integer;
+    begin
+    for i := 0 to TMP_F.Count-1 do
+      begin
+      TMP_FILE:=TMP_F.ValueFromIndex[i];
+      FName:=Files.Strings[i];
+      move(TMP_FILE, FName, FMATT, Int);
+      LogWrite('Файл "'+TMP_FILE+'" возвращен на базу "'+ExtractFilePath(FName)+'".');
+      end;
+    end;
   begin
 
   //Поиск файлов, заданных в ini-файле по маскам в MSK.
@@ -287,23 +302,51 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
     //Вносим изменение в список файлов, там будут файлы из временной дирректории
     TMP_F.Add( 'F' + IntToStr(i+1) + '=' + TMP_FILE );
     end;
+
   //Сохраняем список файлов для использования программой импорта
   TMP_F.SaveToFile(FN+INIFN);
   //Запускаем программу импорта с указанием строки подключения и списка файлов
   try
+
     RunIMP(FN+'ORAIMP.EXE',ConnectStr,INIFN);
-    except on E: Exception do
+    if FileExists( AnswerLog ) then
       begin
-      LogWrite('Не могу запустить программу импорта файлов ORAIMP.EXE. Ошибка: '+E.Message);
-      for i :=0 to TMP_F.Count-1 do
-        begin
-        TMP_FILE:=TMP_F.ValueFromIndex[i];
-        FName:=Files.Strings[i];
-        move(TMP_FILE, FName, FMATT, Int);
-        LogWrite('Файл "'+TMP_FILE+'" возвращен на базу "'+ExtractFilePath(FName)+'".');
+      ANSW := TStringList.Create;
+      try
+        ANSW.LoadFromFile(AnswerLog);
+        for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
+        SX := UpperCase(trim(ANSW.Values['SUCCESS']));
+        if (SX = 'YES') or (SX = 'Y') or (SX = 'OK') or (SX = '1') then
+          begin
+          setLength(SX,0);
+          for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
+          if Length(SX)>0 then SX[Length(SX)] := chr(10);
+          LogWrite('Файлы:' + SX + 'были удачно импортированы в базу "'+sDBN+'".');
+          end
+          else
+          ;
+        finally
+        ANSW.Free;
         end;
+      end
+      else
+      begin
+      raise EMyError01.Create('Не получен файл ответа "'+AnswerLog+'"!');
       end;
+    except
+      on E: EMyError01 do
+        begin
+        LogWrite('Запущена программа импорта из файлов. Ошибка: '+E.Message);
+        CancelMove;
+        end;
+      on E: Exception do
+        begin
+        LogWrite('Не могу запустить программу импорта файлов ORAIMP.EXE. Ошибка: '+E.Message);
+        CancelMove;
+        end;
     end;
+  Files.Free;
+  TMP_F.Free
   end;
 
 procedure TMain.Timer1Timer(Sender: TObject);
