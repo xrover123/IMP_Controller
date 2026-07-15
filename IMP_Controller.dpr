@@ -10,6 +10,10 @@ uses
 {$R *.res}
 
 begin
+  if not IsSingleInstance then
+    begin
+    Halt(1);
+    end;
   Application.Initialize;
   Application.CreateForm(TMain, Main);
   Application.Run;

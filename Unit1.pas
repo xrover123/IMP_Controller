@@ -38,12 +38,15 @@ type
     sImpSaveDir: String;
     ConnectStr: String;
     sDBN, sDBU, sDBP: String;
+    ProgramName: String;
     RunProgTime: integer;
     AnswerLog: String;
     { Private declarations }
   public
     { Public declarations }
   end;
+
+function IsSingleInstance: Boolean;
 
 var
   Main: TMain;
@@ -53,6 +56,33 @@ var
 implementation
 uses Unit2, EasyCript, SearchFileByMask;
 {$R *.dfm}
+
+function IsSingleInstance: Boolean;//Проверка единичного запуска
+const
+  MutexName = 'Global\MyUniqueApp_Mutex_12345'; // уникальное имя мьютекса
+var
+  hMutex: THandle;
+begin
+  // Пытаемся создать мьютекс. Если он уже есть — GetLastError вернёт ERROR_ALREADY_EXISTS
+  hMutex := CreateMutex(nil, False, PChar(MutexName));
+
+  if hMutex = 0 then
+    raise Exception.Create('Не удалось создать мьютекс');
+
+  if GetLastError = ERROR_ALREADY_EXISTS then
+  begin
+    // Мьютекс уже существует — значит, другой экземпляр запущен
+    CloseHandle(hMutex);
+    Result := False;
+  end
+  else
+  begin
+    // Мьютекса не было — мы его создали, значит, других экземпляров нет
+    Result := True;
+    // Не закрываем hMutex: пока процесс жив, мьютекс будет держать блокировку.
+    // При завершении программы ОС сама его освободит.
+  end;
+end;
 
 function GetPC: word; stdcall;
   external 'NetParam.dll' name 'GetPCCode';
@@ -161,7 +191,8 @@ procedure TMain.INIT;
   FN:=ExtractFilePath(ParamStr(0));
   INI := TIniFile.Create(FN+'exchange.ini');
 
-  AnswerLog := trim(INI.ReadString('OTHERS','IMP_ANSW','answer.tmp'));//Ответ от программы импорта
+  AnswerLog := trim(INI.ReadString('OTHERS','IMP_ANSW',FN+'answer.tmp'));//Ответ от программы импорта
+  ProgramName := trim(INI.ReadString('OTHERS','IMP_PROG',FN+'IMP_FILE.EXE'));
 
   SH_DAY := trim(INI.ReadString('SHEDULER','IMP_DEY','1,2,3,4,5,6'));
   SH_BGN := trunc(getTime(trim(INI.ReadString('SHEDULER','IMP_BGN','00:00')),sErr)*24*60*60);
@@ -308,7 +339,7 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
   //Запускаем программу импорта с указанием строки подключения и списка файлов
   try
 
-    RunIMP(FN+'ORAIMP.EXE',ConnectStr,INIFN);
+    RunIMP(ProgramName,ConnectStr,INIFN);
     if FileExists( AnswerLog ) then
       begin
       ANSW := TStringList.Create;
