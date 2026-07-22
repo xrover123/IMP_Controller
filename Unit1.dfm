@@ -1,9 +1,9 @@
 object Main: TMain
-  Left = 964
-  Top = 126
+  Left = 967
+  Top = 154
   BorderStyle = bsDialog
   Caption = 'Imp controller'
-  ClientHeight = 68
+  ClientHeight = 65
   ClientWidth = 362
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -315,13 +315,22 @@ object Main: TMain
     8000FFFF0000FFFF8000FFFF0000FFFF8000FFFF0000FFFF8000FFFF0000FFFF
     8001FFFF0000FFFFFFFFFFFF0000FFFFFFFFFFFF0000FFFFFFFFFFFF0000}
   OldCreateOrder = False
+  OnClose = FormClose
   OnCreate = FormCreate
   OnDestroy = FormDestroy
+  OnShow = FormShow
   PixelsPerInch = 96
   TextHeight = 13
+  object Label1: TLabel
+    Left = 10
+    Top = 0
+    Width = 345
+    Height = 13
+    AutoSize = False
+  end
   object TrackBar1: TTrackBar
     Left = 0
-    Top = 16
+    Top = 13
     Width = 362
     Height = 52
     Align = alBottom

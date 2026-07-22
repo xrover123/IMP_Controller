@@ -6,6 +6,7 @@ uses
   Windows, SysUtils;
 
 var FERR:String;
+    WaitMv: integer;
 
 function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
 function Ansi1251ToWide(const S: AnsiString): WideString;
@@ -14,9 +15,67 @@ function SaveFile(const FN1,FN2,DIR: String): boolean;
 
 implementation
 
+uses Unit1, Classes;
 
 const
   CP_1251 = 1251;
+
+function IsFileSizeStable(const FileName: string; StableDurationMs, TimeoutMs: Integer): Boolean;
+var
+  LastSize, CurSize: Int64;
+  StartTime, CheckTime: Cardinal;
+begin
+  Result := False;
+
+  Main.Label1.Caption:='Ожидание доступа к файлу.';
+  Main.Update;
+
+  if not FileExists(FileName) then
+    Exit;
+
+  // Получаем начальный размер
+  with TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone) do
+  try
+    LastSize := Size;
+  finally
+    Free;
+  end;
+
+  StartTime := GetTickCount;
+  CheckTime := StartTime;
+
+  while (GetTickCount - StartTime) < TimeoutMs do
+  begin
+    Sleep(200); // опрос каждые 200 мс — можно менять
+
+    with TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone) do
+    try
+      CurSize := Size;
+    finally
+      Free;
+    end;
+
+    if CurSize = LastSize then
+    begin
+      // Размер не менялся: проверяем, сколько времени он стабилен
+      if (GetTickCount - CheckTime) >= StableDurationMs then
+      begin
+        Result := True;
+        Main.Label1.Caption:='Копирование файла.';
+        Main.Update;
+        Exit;
+      end;
+    end
+    else
+    begin
+      // Размер изменился — сбрасываем таймер стабильности
+      LastSize := CurSize;
+      CheckTime := GetTickCount;
+    end;
+  end;
+  Main.Label1.Caption:='Файл продолжает писаться. Обработка откладывается!';
+  Main.Update;
+end;
 
 function Ansi1251ToWide(const S: AnsiString): WideString;
 var
@@ -81,6 +140,11 @@ function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
       FERR:='Не могу удалить временный файл "'+F2+'".';
       exit;         //перемещения файла, поэтому выходим из процедуры перемещения.
       end;
+  if not IsFileSizeStable(F1,5000,WaitMv*1000) then
+    begin
+    result:=False;
+    exit;
+    end;
   N:=0;
   while not MoveFile(PAnsiChar(F1),PAnsiChar(F2)) do
     begin
