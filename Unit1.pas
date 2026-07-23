@@ -199,6 +199,7 @@ var
   hs: THeapStatus;
   S: String;
 begin
+  if status>LogStatus then exit;
   hs := GetHeapStatus;
   S := #13#10'  TotalAllocated: ' + BytesToHuman(hs.TotalAllocated)+
        #13#10'  TotalFree:      ' + BytesToHuman(hs.TotalFree)+
@@ -380,8 +381,6 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
 
   if Files=nil then exit;//Файлы не найдены, выходим
 
-  LogWrite('Найдены новые файлы. Запуск программы импорта.',0);
-
   TMP_F := TStringList.Create;
   for i :=0 to Files.Count-1 do
     begin
@@ -390,6 +389,22 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
     //Перемещение во временную дирректорию
     move(FName,TMP_FILE,FMATT,Int);
 
+    if not CheckFile(TMP_FILE) then
+      begin
+      DeleteFile(TMP_FILE);
+      LogWrite('Файл "'+Files.Strings[i]+'" не имеел значащих строк и был удален.',1);
+      for j:=i+1 to Files.Count-1 do
+        if FileExists(Files.Strings[j]) then
+          begin
+          DeleteFile(Files.Strings[j]);
+          SX:=SX+#13#10'  '+Files.Strings[j];
+          end;
+      LogWrite('Так как "'+Files.Strings[i]+'" не имеел значащих строк,'#13#10'следующие файлы были также удалены:'+SX,1);
+      TMP_F.Free;
+      Files.Free;
+      exit;
+      end;
+    LogWrite('Найдены новые файлы. Запуск программы импорта.',0);
     //Вычисление дирректории для бекапа
     SX:=FormatDateTime('dd.mm.yyyy hh:nn:ss', now());//DateTimeToStr(now());
     for j:=1 to length(SX) do
@@ -407,73 +422,75 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
     if SaveFile(TMP_FILE, SX, ISD) then//Бекапим из временной дирректории
       LogWrite('Создана резервная копия файла "'+SX+'"  в директории "'+sImpSaveDir+'". ',1)
       else
-      LogWrite('Файл "'+SX+'" не забекапился. '+FERR,0);
+      LogWrite('Файл "'+SX+'" не забекапился. '+FERR,1);
 
     //Вносим изменение в список файлов, там будут файлы из временной дирректории
     TMP_F.Add( 'F' + IntToStr(i+1) + '=' + TMP_FILE );
     end;
 
-  //Сохраняем список файлов для использования программой импорта
-  TMP_F.SaveToFile(FN+INIFN);
-  //Запускаем программу импорта с указанием строки подключения и списка файлов
-  try
-
-    LogWrite('Запуск "'+ProgramName+' '+sDBU+'/***@'+sDBN+' '+INIFN+'".',2);
-    RunIMP(ProgramName,ConnectStr,INIFN);
-    LogWrite('Отработала программа импоорта "'+ProgramName+'".',2);
-    if FileExists( AnswerLog ) then
-      begin
-      LogWrite('Получен файл ответа "'+ProgramName+'".',1);
-      ANSW := nil;
-      try
-      ANSW := TStringList.Create;
-      try
-        ANSW.CaseSensitive:=False;
-        ANSW.LoadFromFile(AnswerLog);
-        DeleteFile(AnswerLog);
-        for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
-        SX := UpperCase(trim(ANSW.Values['SUCCESS']));
-        LogWrite('Получен ответ от программы импорта: SUCCESS="'+SX+'".',1);
-        if (SX = 'YES') or (SX = 'Y') or (SX = 'OK') or (SX = '1') then
-          begin
-          setLength(SX,0);
+  if TMP_F.Count>0 then
+    begin
+    //Сохраняем список файлов для использования программой импорта
+    TMP_F.SaveToFile(FN+INIFN);
+    //Запускаем программу импорта с указанием строки подключения и списка файлов
+    try
+      LogWrite('Запуск "'+ProgramName+' '+sDBU+'/***@'+sDBN+' '+INIFN+'".',2);
+      RunIMP(ProgramName,ConnectStr,INIFN);
+      LogWrite('Отработала программа импоорта "'+ProgramName+'".',2);
+      if FileExists( AnswerLog ) then
+        begin
+        LogWrite('Получен файл ответа "'+ProgramName+'".',1);
+        ANSW := nil;
+        try
+        ANSW := TStringList.Create;
+        try
+          ANSW.CaseSensitive:=False;
+          ANSW.LoadFromFile(AnswerLog);
+          DeleteFile(AnswerLog);
           for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
-          if Length(SX)>0 then SX[Length(SX)] := chr(10);
-          LogWrite('Файлы:' + SX + 'были удачно импортированы в базу "'+sDBN+'".',0);
-          end
-          else
-          begin
-          LogWrite('Программа импорта закончилась с ошибками.',0);
-          SX := ANSW.Text;
-          LogWrite('Файл ответа:'+#13#10+SX,1);
-          i:=0;
-          if LogStatus=0 then
-            repeat
-            inc(i);
-            SX:=ANSW.Values['ERROR'+IntToStr(i)];
-            until not LogWriteFunc(SX);
+          SX := UpperCase(trim(ANSW.Values['SUCCESS']));
+          LogWrite('Получен ответ от программы импорта: SUCCESS="'+SX+'".',1);
+          if (SX = 'YES') or (SX = 'Y') or (SX = 'OK') or (SX = '1') then
+            begin
+            setLength(SX,0);
+            for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
+            if Length(SX)>0 then SX[Length(SX)] := chr(10);
+            LogWrite('Файлы:' + SX + 'были удачно импортированы в базу "'+sDBN+'".',0);
+            end
+            else
+            begin
+            LogWrite('Программа импорта закончилась с ошибками.',0);
+            SX := ANSW.Text;
+            LogWrite('Файл ответа:'+#13#10+SX,1);
+            i:=0;
+            if LogStatus=0 then
+              repeat
+              inc(i);
+              SX:=ANSW.Values['ERROR'+IntToStr(i)];
+              until not LogWriteFunc(SX);
+            end;
+          except on E: Exception do LogWriteFunc('Ошибка распознания файла ответа: '+E.Message);
           end;
-        except on E: Exception do LogWriteFunc('Ошибка распознания файла ответа: '+E.Message);
+        finally
+        ANSW.Free;
+        end
+        end
+        else
+        begin
+        LogWrite('Не получен файл ответа "'+AnswerLog+'"!',0);
+        raise EMyError01.Create('Не получен файл ответа "'+AnswerLog+'"!');
         end;
-      finally
-      ANSW.Free;
-      end
-      end
-      else
-      begin
-      LogWrite('Не получен файл ответа "'+AnswerLog+'"!',0);
-      raise EMyError01.Create('Не получен файл ответа "'+AnswerLog+'"!');
+      except
+        on E: EMyError01 do
+          begin
+          CancelMove;
+          end;
+        on E: Exception do
+          begin
+          LogWrite('Не могу запустить программу импорта файлов "'+ProgramName+'". Ошибка: '+E.Message,0);
+          CancelMove;
+          end;
       end;
-    except
-      on E: EMyError01 do
-        begin
-        CancelMove;
-        end;
-      on E: Exception do
-        begin
-        LogWrite('Не могу запустить программу импорта файлов "'+ProgramName+'". Ошибка: '+E.Message,0);
-        CancelMove;
-        end;
     end;
   Files.Free;
   TMP_F.Free

@@ -12,6 +12,7 @@ function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
 function Ansi1251ToWide(const S: AnsiString): WideString;
 function RunAndWaitUnicode(const ExePath, Args: string; TimeoutMs: Cardinal = INFINITE): Cardinal;
 function SaveFile(const FN1,FN2,DIR: String): boolean;
+function CheckFile(FileName: String): boolean;
 
 implementation
 
@@ -19,6 +20,37 @@ uses Unit1, Classes;
 
 const
   CP_1251 = 1251;
+
+function CheckFile(FileName: String): boolean;
+var
+  F: TextFile;
+  Line: string;
+  cnt: integer;
+begin
+  result:=false;
+  AssignFile(F, FileName);
+  try
+    Reset(F);
+    cnt:=0;
+    try
+      while not Eof(F) do
+      begin
+        ReadLn(F, Line);
+        if Trim(Line) <> '' then
+          Inc(cnt);
+        if cnt>1 then
+          begin
+          result:=true;
+          exit
+          end;
+      end;
+    finally
+      CloseFile(F);
+    end;
+  except
+  end;
+end;
+
 
 function IsFileSizeStable(const FileName: string; StableDurationMs, TimeoutMs: Integer): Boolean;
 var
