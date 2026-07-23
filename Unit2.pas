@@ -6,7 +6,7 @@ uses
   Windows, SysUtils;
 
 var FERR:String;
-    WaitMv: integer;
+    WaitMv, CheckTm: integer; //ѕараметры проверки измен€емости файла (с, ms)
 
 function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
 function Ansi1251ToWide(const S: AnsiString): WideString;
@@ -46,7 +46,7 @@ begin
 
   while (GetTickCount - StartTime) < TimeoutMs do
   begin
-    Sleep(200); // опрос каждые 200 мс Ч можно мен€ть
+    Sleep(CheckTm); // опрос каждые 200 мс Ч можно мен€ть
 
     with TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone) do
     try

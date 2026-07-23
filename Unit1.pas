@@ -298,7 +298,8 @@ procedure TMain.INIT;
   FMATT:=INI.ReadInteger('FILE','IMP_FILE_MOVE_ATT',10);//Кол-во попыток перемещения
   Int:=INI.ReadInteger('FILE','IMP_FILE_MOVE_SLEEP',60); //задержка перед следующим поиском (с)
   Per:=INI.ReadInteger('FILE','IMP_FILE_MOVE_TIME',60*20);//Период ожидания следующих за первым файлов (с)
-  WaitMv:=INI.ReadInteger('FILE','IMP_FILE_WAIT_MOVE',60*10); //Ожидание стабильности файла
+  WaitMv:=INI.ReadInteger('FILE','IMP_FILE_WAIT_MOVE',60*10); //Ожидание стабильности файла (с)
+  WaitMv:=INI.ReadInteger('FILE','IMP_FILE_CHECK_INTERVAL',500); //Ожидание стабильности файла (интервал проверки изменений (мс))
   TMPDIR:=trim(INI.ReadString('FILE','IMP_FILE_MOVE_TMP',ExtractFilePath(ParamStr(0))));
 
   LOGFILE := trim(INI.ReadString('OTHERS','IMP_LOG',''));
