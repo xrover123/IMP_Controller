@@ -1,0 +1,17 @@
+# Переменные и локальные файлы Delphi
+*.dcu
+*.dproj.local
+*.identcache
+*.local
+__history/
+
+# Папки сборки
+Win32/Debug/
+Win32/Release/
+Win64/Debug/
+Win64/Release/
+
+# Логи и кэш
+*.log
+tmp/
+temp/
