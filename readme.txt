@@ -11,6 +11,16 @@
   2-имя файла со списком файлов из группы. (строка списка файорв имеет вид: F<№ПП>=<полное название файла>);
 Настройка ведется через конфигурационный файл exchange.ini (классический формат ini-файла):
 
+[FILES]                      - В этой секции список масок файлов. "#" - это группа файлов (находится первый файл из списка по нему определяется группа,
+                               в маски остальных файлов подставляется группа, определенная по первому файлу вместо символа "#"). Если используется группа,
+                               символы "*" и "?" в масках запрещены.
+DOC=C:\Projects\Delphi\ITAPT_ISTRA\IMP_FILE\IMP_Controller\Data\#_DOC.CSV
+DOCITEM=C:\Projects\Delphi\ITAPT_ISTRA\IMP_FILE\IMP_Controller\Data\#_DOCITEM.CSV
+DOCPAY=C:\Projects\Delphi\ITAPT_ISTRA\IMP_FILE\IMP_Controller\Data\#_DOCPAY.CSV
+DOCOFF=C:\Projects\Delphi\ITAPT_ISTRA\IMP_FILE\IMP_Controller\Data\#_DOCOFF.CSV
+[DEPENDENCIES]               - Зависимости.
+DOC=DOCITEM,DOCPAY           - В данной строке задано, что файлы под псевданимами DOCITEM,DOCPAY зависят от DOC и если DOC пуст,
+                               DOCITEM и DOCPAY тоже пусты).
 [DB]
 DB_NAME                      - База данных (псевдоним).
 USER                         - Пользователь БД

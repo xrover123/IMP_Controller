@@ -4,7 +4,7 @@ object Main: TMain
   BorderStyle = bsDialog
   Caption = 'Imp controller'
   ClientHeight = 65
-  ClientWidth = 362
+  ClientWidth = 485
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -325,14 +325,14 @@ object Main: TMain
   object Label1: TLabel
     Left = 10
     Top = 0
-    Width = 345
+    Width = 471
     Height = 13
     AutoSize = False
   end
   object TrackBar1: TTrackBar
     Left = 0
     Top = 13
-    Width = 362
+    Width = 485
     Height = 52
     Align = alBottom
     Frequency = 3600

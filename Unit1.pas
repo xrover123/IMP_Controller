@@ -598,6 +598,7 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
 
     if not CheckFile(TMP_FILE) then
       begin
+      Label1.Caption:='Проверка содержания файла дала отрицательный результат.';Update;
       if bMove then
         begin
         DeleteFile(TMP_FILE);//Удаляем текущий файл из временной дирректории
@@ -629,6 +630,13 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
       //exit;
       continue;
       end;
+    if not bMove then
+      begin
+      Label1.Caption:='Файл не смог переместится во временную дирректорию.';Update;
+      LogWriteAssured('Файл "'+Files.Items[i].FileName+'" не смог переместится в дирректорию "'+TMPDIR+'".'#13#10'  Ошибка: '+FERR,0);
+      continue;
+      end;
+    Label1.Caption:='Проверка содержания файла дала положительный результат.';Update;
     LogWriteAssured('Найден новыq файл "'+FName+'".',1);
     //Вычисление дирректории для бекапа
     if sImpSaveDir<>'' then
@@ -727,7 +735,8 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
       end;
     end;
   Files.Clear;
-  TMP_F.Free
+  TMP_F.Free;
+  Label1.Caption := 'Режим поиска файлов.'; Update;
   end;
 
 procedure TMain.Timer1Timer(Sender: TObject);

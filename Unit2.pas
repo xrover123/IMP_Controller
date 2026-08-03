@@ -61,7 +61,7 @@ var
   StartTime, CheckTime: Cardinal;
 begin
   Result := False;
-
+  FERR := '';
   Main.Label1.Caption:='Ожидание доступа к файлу.';
   Main.Update;
 
@@ -86,6 +86,7 @@ begin
     with TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone) do
     try
       CurSize := Size;
+      FERR:=FERR+IntToStr(Size)+',';
     finally
       Free;
     end;
@@ -96,7 +97,8 @@ begin
       if (GetTickCount - CheckTime) >= StableDurationMs then
       begin
         Result := True;
-        Main.Label1.Caption:='Копирование файла.';
+        FERR := '';
+        Main.Label1.Caption:='Размер файла не меняется, файл готов к импорту.';
         Main.Update;
         Exit;
       end;
@@ -107,6 +109,8 @@ begin
       LastSize := CurSize;
       CheckTime := GetTickCount;
     end;
+  if FERR<>'' then
+    SetLength(FERR, Length(FERR)-1);
   end;
   Main.Label1.Caption:='Файл продолжает писаться. Обработка откладывается!';
   Main.Update;
@@ -172,6 +176,7 @@ function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
   var N: integer;
       E: DWord;
   begin
+  FERR:='';
   if FileExists(F2) then
     if not DeleteFile(PChar(F2)) then//Удаление старого временного файла, если он существует.
       begin
@@ -181,10 +186,13 @@ function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
       end;
   if not IsFileSizeStable(F1,5000,WaitMv*1000) then
     begin
+    FERR:='Размер файла менялся: ' + FERR+'. в течении '+IntToStr(WaitMv)+'с.';
+    Main.Label1.Caption:=FERR;Main.Update;
     result:=False;
     exit;
     end;
   N:=0;
+  Main.Label1.Caption:='Перемещаю файл.';Main.Update;
   while not MoveFile(PAnsiChar(F1),PAnsiChar(F2)) do
     begin
     if N>MoveCount then
@@ -212,7 +220,15 @@ function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
         exit;
         end;
       end;
+    inc(N);
     end;
+  if N>MoveCount then
+    FERR := 'Попытки перемещения файла закончились неудачно.'
+    else
+    FERR := 'Файл был перемещен во временную дирректорию.';
+  Main.Label1.Caption := FERR;
+  Main.Update;
+  result := not (N>MoveCount);
   end;
 
 function SaveFile(const FN1,FN2,DIR: String): boolean;
