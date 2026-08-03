@@ -10,7 +10,7 @@ var FERR:String;
 
 function move(const F1, F2: String; MoveCount: integer; IntAtt: int64): boolean;
 function Ansi1251ToWide(const S: AnsiString): WideString;
-function RunAndWaitUnicode(const ExePath, Args: string; TimeoutMs: Cardinal = INFINITE): Cardinal;
+function RunAndWaitUnicode(const ExePath, Args: string; WaitSign: boolean; TimeoutMs: Cardinal = INFINITE): Cardinal;
 function SaveFile(const FN1,FN2,DIR: String): boolean;
 function CheckFile(FileName: String): boolean;
 
@@ -28,27 +28,30 @@ var
   cnt: integer;
 begin
   result:=false;
-  AssignFile(F, FileName);
-  try
-    Reset(F);
-    cnt:=0;
+  if FileExists(FileName) then
+    begin
+    AssignFile(F, FileName);
     try
-      while not Eof(F) do
-      begin
-        ReadLn(F, Line);
-        if Trim(Line) <> '' then
-          Inc(cnt);
-        if cnt>1 then
-          begin
-          result:=true;
-          exit
-          end;
+      Reset(F);
+      cnt:=0;
+      try
+        while not Eof(F) do
+        begin
+          ReadLn(F, Line);
+          if Trim(Line) <> '' then
+            Inc(cnt);
+          if cnt>1 then
+            begin
+            result:=true;
+            exit
+            end;
+        end;
+      finally
+        CloseFile(F);
       end;
-    finally
-      CloseFile(F);
+    except
     end;
-  except
-  end;
+    end;
 end;
 
 
@@ -123,7 +126,7 @@ begin
   MultiByteToWideChar(CP_1251, 0, PAnsiChar(S), Length(S), PWideChar(Result), Len);
 end;
 
-function RunAndWaitUnicode(const ExePath, Args: string; TimeoutMs: Cardinal = INFINITE): Cardinal;
+function RunAndWaitUnicode(const ExePath, Args: string; WaitSign: boolean; TimeoutMs: Cardinal = INFINITE): Cardinal;
 var
   StartupInfo: TStartupInfo;      // <-- используем стандартный тип из Windows.pas
   ProcInfo: TProcessInformation;
@@ -145,6 +148,9 @@ begin
     RaiseLastOSError;
 
   try
+    if not WaitSign then result := 0
+    else
+    begin
     WaitResult := WaitForSingleObject(ProcInfo.hProcess, TimeoutMs);
     if WaitResult = WAIT_TIMEOUT then
     begin
@@ -155,6 +161,7 @@ begin
 
     if not GetExitCodeProcess(ProcInfo.hProcess, Result) then
       RaiseLastOSError;
+    end;
   finally
     CloseHandle(ProcInfo.hThread);
     CloseHandle(ProcInfo.hProcess);

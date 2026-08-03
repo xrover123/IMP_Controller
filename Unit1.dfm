@@ -315,6 +315,7 @@ object Main: TMain
     8000FFFF0000FFFF8000FFFF0000FFFF8000FFFF0000FFFF8000FFFF0000FFFF
     8001FFFF0000FFFFFFFFFFFF0000FFFFFFFFFFFF0000FFFFFFFFFFFF0000}
   OldCreateOrder = False
+  Position = poDesktopCenter
   OnClose = FormClose
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -334,6 +335,7 @@ object Main: TMain
     Width = 362
     Height = 52
     Align = alBottom
+    Frequency = 3600
     TabOrder = 0
     Visible = False
   end
@@ -346,5 +348,11 @@ object Main: TMain
     Enabled = False
     OnTimer = Timer2Timer
     Left = 264
+  end
+  object Timer3: TTimer
+    Enabled = False
+    Interval = 5000
+    OnTimer = Timer3Timer
+    Left = 296
   end
 end

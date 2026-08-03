@@ -4,7 +4,7 @@ interface
 
 uses
   VCLFixes, VCLFixPack, VCLFlickerReduce, Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, ExtCtrls, INIFiles, ComCtrls, RXShell, StdCtrls;
+  Dialogs, ExtCtrls, INIFiles, ComCtrls, RXShell, StdCtrls, Unit3;
 
 type TDays = array [1..7] of boolean;
 
@@ -14,11 +14,14 @@ type
     Timer2: TTimer;
     TrackBar1: TTrackBar;
     Label1: TLabel;
+    Timer3: TTimer;
     procedure Timer1Timer(Sender: TObject);
-    function FindFiles: TStringList;
-    procedure INIT;
+    function FindFiles(F: TFoundFiles): boolean;
+    //function FindFiles: TStringList;
+    function  INIT: boolean;
     procedure RunProg;
     procedure LogWrite(const S: String; status: integer);
+    procedure LogWriteAssured(const sMSG: String; status: integer);
     function  LogWriteFunc(const S: String): boolean;
     procedure RunIMP(const FN,Conn, Fls: String);
     procedure Timer2Timer(Sender: TObject);
@@ -27,8 +30,13 @@ type
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure LogHeapStatus(status: integer);
     procedure FormShow(Sender: TObject);
+    procedure Timer3Timer(Sender: TObject);
   private
-    MSK: TStringList;
+    ProgWait: Boolean;
+    LogEnable: Boolean;
+    MSK: TMsk;//TStringList;
+    Dep: TDep;
+    Files: TFoundFiles;
     FMATT: integer;
     TMPDIR:  String;
     LOGFILE: String;
@@ -53,16 +61,30 @@ type
   end;
 
 
-function IsSingleInstance: Boolean;
+function IsSingleInstance(const AddMutex: String): Boolean;
 
 var
   Main: TMain;
   T1,T2: TDateTime;
+  MainConfig: String;
+  hMutexProg: THandle;
   type EMyError01 = class(Exception);
 
 implementation
-uses Unit2, EasyCript, SearchFileByMask, psapi;
+uses Unit2, crypt, SearchFileByMask, psapi{, EasyCript;//w := GetPC;//GetCriptCode;},
+  ShowErr, MutexHash;
 {$R *.dfm}
+
+function AddSuffixToFileName(const FileName, Suffix: string): string;
+var
+  Path, Base, Ext: string;
+begin
+  Path := ExtractFilePath(FileName);        // C:\
+  Base := ChangeFileExt(ExtractFileName(FileName), ''); // MYFILE
+  Ext  := ExtractFileExt(FileName);         // .txt
+
+  Result := Path + Base + '_' + Suffix + Ext; // C:\MYFILE_<суффикс>.txt
+end;
 
 
 function GetProcessMemoryBytes: Int64;
@@ -76,22 +98,29 @@ begin
     Result := 0;
 end;
 
-function IsSingleInstance: Boolean;//Проверка единичного запуска
-const
-  MutexName = 'Global\MyUniqueApp_Mutex_12345'; // уникальное имя мьютекса
-var
-  hMutex: THandle;
-begin
-  // Пытаемся создать мьютекс. Если он уже есть — GetLastError вернёт ERROR_ALREADY_EXISTS
-  hMutex := CreateMutex(nil, False, PChar(MutexName));
 
-  if hMutex = 0 then
+
+function IsSingleInstance(const AddMutex: String): Boolean;//Проверка единичного запуска
+const
+  MutexPref = 'Global\Apsida-IMP_Controller';
+var
+  MutexName: String; // уникальное имя мьютекса
+
+begin
+  if AddMutex='' then
+    MutexName := MutexPref
+    else
+    MutexName:=MutexPref+'('+AddMutex+')';
+  // Пытаемся создать мьютекс. Если он уже есть — GetLastError вернёт ERROR_ALREADY_EXISTS
+  hMutexProg := CreateMutex(nil, False, PChar(MutexName));
+
+  if hMutexProg = 0 then
     raise Exception.Create('Не удалось создать мьютекс');
 
   if GetLastError = ERROR_ALREADY_EXISTS then
   begin
     // Мьютекс уже существует — значит, другой экземпляр запущен
-    CloseHandle(hMutex);
+    CloseHandle(hMutexProg);
     Result := False;
   end
   else
@@ -102,6 +131,8 @@ begin
     // При завершении программы ОС сама его освободит.
   end;
 end;
+
+
 
 function GetPC: word; stdcall;
   external 'NetParam.dll' name 'GetPCCode';
@@ -149,8 +180,9 @@ function GetTime(const S: String; var sMSG: String): TDateTime;
 
 procedure TMain.LogWrite(const S: String; status: integer);
   var LOG: TextFile;
+      X: String;
   begin
-  if status>LogStatus then exit;
+
   try
     AssignFile(LOG, LOGFILE);
     if FileExists(LOGFILE) then
@@ -158,7 +190,11 @@ procedure TMain.LogWrite(const S: String; status: integer);
       else
       rewrite(LOG);
     //WriteLN(LOG,FormatDateTime('dd.mm.yyyy HH:nn:ss', Now)+' '+S);
-    WriteLN(LOG,DateTimeToStr(Now)+' '+S);
+    if GrpID='' then
+      X:=' '
+      else
+      X:=' ('+GrpID+') ';
+    WriteLN(LOG,DateTimeToStr(Now)+X+S);
   finally
     try
     CloseFile(LOG);
@@ -167,11 +203,35 @@ procedure TMain.LogWrite(const S: String; status: integer);
   end;
   end;
 
+
+procedure TMain.LogWriteAssured(const sMSG: String; status: integer);
+var WaitRes: DWORD;
+begin
+  if (status>LogStatus) or (not LogEnable) then exit;
+  if hMutexLog = 0 then
+    Exit;
+
+  WaitRes := WaitForSingleObject(hMutexLog, 5000);
+
+  // И WAIT_OBJECT_0, и WAIT_ABANDONED — значит, мьютекс теперь у нас
+  if (WaitRes <> WAIT_OBJECT_0) and (WaitRes <> WAIT_ABANDONED) then
+    Exit; // только таймаут и ошибки — выходим
+
+  try
+    if WaitRes = WAIT_ABANDONED then
+      LogWrite('WARNING: захвачен заброшенный мьютекс (предыдущий процесс мог упасть)', 0);
+
+    LogWrite(sMSG,0);
+  finally
+    ReleaseMutex(hMutexLog);
+  end;
+end;
+
 function TMain.LogWriteFunc(const S: String): boolean;
   begin
   if length(S)>0 then
     begin
-    LogWrite(S,0);
+    LogWriteAssured(S,0);
     result:=True;
     end
     else
@@ -206,9 +266,25 @@ begin
        #13#10'  Overhead:       ' + BytesToHuman(hs.Overhead)+
        #13#10'  Unused:         ' + BytesToHuman(hs.Unused)+
        #13#10'  ProcessMemory   ' + BytesToHuman(GetProcessMemoryBytes);
-  LogWrite('HeapStatus:'+S,2);
+  LogWriteAssured('HeapStatus:'+S,2);
 end;
 
+function TMain.FindFiles(F: TFoundFiles): boolean;
+  var S: String;
+      i: integer;
+  begin
+  F.Clear;
+  GrpID := '';
+  //После этого времени остальные файлы группы будут ожидаться per секунд
+  StartTime := now();
+  for i := 0 to MSK.Count-1 do
+    begin
+    S:=SearchFileTS_reliably(MSK.Items[i].M,GrpID,StartTime,int,per);
+    if S<>'' then F.Add(S,MSK.Items[i]);
+    end;
+  result := (F.Count > 0);
+  end;
+{
 function TMain.FindFiles: TStringList;
   var SS: TStringList;
       S: String;
@@ -222,7 +298,7 @@ function TMain.FindFiles: TStringList;
   SS := TStringList.Create;
   for i := 0 to MSK.Count-1 do
     begin
-    S:=SearchFileTS_reliably(MSK.Strings[i],GrpID,StartTime,int,per);
+    S:=SearchFileTS_reliably(MSK.Items[i].M,GrpID,StartTime,int,per);
     if S<>'' then SS.Add(S);
     end;
 
@@ -235,12 +311,45 @@ function TMain.FindFiles: TStringList;
     result:=nil;
     end;
   end;
+}
 procedure TMain.RunIMP(const FN,Conn, Fls: String);
+  var S: String;
   begin
-  RunAndWaitUnicode(FN, Conn+' '+Fls)
+  S:=' '+IntToStr(LogStatus);
+  if GrpID<>'' then S:=S+' '+GrpID;
+  RunAndWaitUnicode(FN, Conn+' '+Fls+S, ProgWait)
   end;
 
-procedure TMain.INIT;
+function TestFile(const FileName: String): boolean;
+  var F: TextFile;
+      bb: boolean;
+  begin
+  bb := False;
+  result := False;
+  try
+    AssignFile(F,FileName);
+    try
+      if FileExists(FileName) then
+        append(F)
+        else
+        begin
+        rewrite(F);
+        bb:=True;
+        end;
+      result := True;
+      finally
+      CloseFile(F);
+      end;
+    except;
+    end;
+  try
+    if bb then DeleteFile(FileName)
+    except
+    result := False;
+    end;
+  end;
+
+function TMain.INIT: boolean;
   var TMP_FILE, FN: String;
       INI: TIniFile;
       w: word;
@@ -250,6 +359,7 @@ procedure TMain.INIT;
       SH_DAY: String;
       SS: TStringList;
   begin
+  result := True;
   if ParamCount>0 then
     try
       LogStatus:=StrToInt(ParamStr(1));
@@ -258,18 +368,74 @@ procedure TMain.INIT;
       end
     else
     LogStatus:=0;
-  try
   FN:=ExtractFilePath(ParamStr(0));
-  INI := TIniFile.Create(FN+'exchange.ini');
+  if pos('\',MainConfig)<>0 then
+    TMP_FILE := MainConfig
+    else
+    TMP_FILE := FN+MainConfig;
+  if not FileExists(TMP_FILE) then
+    begin
+    //Label1.Caption := 'Не найден главный конфигурационный файл "'+TMP_FILE+'".';
+    Timer3.Enabled:=True;
+    ErrForm.ShowMessage('Не найден главный конфигурационный файл "'+TMP_FILE+'".');
+    Exit;
+    end;
+  try
+  INI := TIniFile.Create(TMP_FILE);
+
+  LOGFILE := trim(INI.ReadString('OTHERS','IMP_LOG',''));
+  if LOGFILE[2]<>':' then
+    begin
+    TMP_FILE := trim(INI.ReadString('OTHERS', 'LOG', ''));
+    {$B-}
+    if (length(TMP_FILE) > 0) and (TMP_FILE[length(TMP_FILE)] = '\') then
+      LOGFILE := TMP_FILE + LOGFILE;
+    end;
+  if (LOGFILE='') or (not TestFile( LOGFILE )) then
+    begin
+    LogEnable := False;
+    result:=False;
+    INI.Free;
+    exit;
+    end
+    else
+    LogEnable := True;
+  if LogEnable then
+    InitLogMutex(LOGFILE);
+  LogWriteAssured('Старт контроллера файлового импорта',0);
+
+  ProgWait:=INI.ReadBool('OTHERS', 'PROG_WITE', True);
 
   AnswerLog := trim(INI.ReadString('OTHERS','IMP_ANSW',FN+'answer.tmp'));//Ответ от программы импорта
-  ProgramName := trim(INI.ReadString('OTHERS','IMP_PROG',FN+'IMP_FILE.EXE'));
+  if ProgWait and (AnswerLog<>'') and (not TestFile( AnswerLog )) then
+    begin
+    result:=False;
+    INI.Free;
+    LogWriteAssured('Нет доступа к файлу ответа"'+AnswerLog+'"!',0);
+    exit;
+    end;
+
+  ProgramName := trim(INI.ReadString('OTHERS','IMP_PROG',''));
+  if ProgramName<>'' then
+    begin
+    if pos('\', ProgramName)=0 then
+      ProgramName := FN+ProgramName;
+
+    if not FileExists( ProgramName ) then
+      begin
+      result:=False;
+      INI.Free;
+      LogWriteAssured('Не найдена программа импорта "'+ProgramName+'"!',0);
+      exit;
+      end;
+    end;
+
 
   SH_DAY := trim(INI.ReadString('SHEDULER','IMP_DEY','1,2,3,4,5,6'));
   SH_BGN := trunc(getTime(trim(INI.ReadString('SHEDULER','IMP_BGN','00:00')),sErr)*24*60*60);
-  if sErr<>'' then LogWrite(sErr + ' в параметре "IMP_BGN" секции "SHEDULER" конфигурационного файла "exchange.ini".',0);
+  if sErr<>'' then LogWriteAssured(sErr + ' в параметре "IMP_BGN" секции "SHEDULER" конфигурационного файла "exchange.ini".',0);
   SH_END := trunc(getTime(trim(INI.ReadString('SHEDULER','IMP_END','20:30')),sErr)*24*60*60);
-  if sErr<>'' then LogWrite(sErr + ' в параметре "IMP_END" секции "SHEDULER" конфигурационного файла "exchange.ini".',0);
+  if sErr<>'' then LogWriteAssured(sErr + ' в параметре "IMP_END" секции "SHEDULER" конфигурационного файла "exchange.ini".',0);
   SH_INT := INI.ReadInteger('SHEDULER','IMP_INT',3*60)*1000;
   TrackBar1.Min := trunc(frac(now())*24*60*60);
   TrackBar1.Max := SH_END;
@@ -302,17 +468,27 @@ procedure TMain.INIT;
   WaitMv:=INI.ReadInteger('FILE','IMP_FILE_WAIT_MOVE',60*10); //Ожидание стабильности файла (с)
   WaitMv:=INI.ReadInteger('FILE','IMP_FILE_CHECK_INTERVAL',500); //Ожидание стабильности файла (интервал проверки изменений (мс))
   TMPDIR:=trim(INI.ReadString('FILE','IMP_FILE_MOVE_TMP',ExtractFilePath(ParamStr(0))));
-
-  LOGFILE := trim(INI.ReadString('OTHERS','IMP_LOG',''));
-  if LOGFILE[2]<>':' then
+  if not TestFile(TMPDIR+'tst') then
     begin
-    TMP_FILE := trim(INI.ReadString('OTHERS', 'LOG', ''));
-    {$B-}
-    if (length(TMP_FILE) > 0) and (TMP_FILE[length(TMP_FILE)] = '\') then
-      LOGFILE := TMP_FILE + LOGFILE;
+    result:=False;
+    INI.Free;
+    LogWriteAssured('В дирректории "'+TMPDIR+'" не возможна запись файла!',1);
+    exit;
     end;
-  LogWrite('Старт контроллера файлового импорта',0);
-  try
+
+  sDBN:=trim(INI.ReadString('DB','DB_NAME',''));
+  sDBU:=trim(INI.ReadString('DB','USER',''));
+  sDBP:=trim(INI.ReadString('DB','PSW',''));
+
+  if (sDBN='') or (sDBU='') or (sDBP='') then
+    begin
+    result:=False;
+    INI.Free;
+    LogWriteAssured('Заданы не все параметры подключения к БД!',0);
+    exit;
+    end;
+
+{  try
     w := GetPC;//GetCriptCode;
     bErr:=False
     except on E: Exception do
@@ -323,123 +499,180 @@ procedure TMain.INIT;
     end;
   if bErr then
     begin
-    LogWrite('Процедура определения ID компьютера выдала ошибку: '+sErr,0);
+    LogWriteAssured('Процедура определения ID компьютера выдала ошибку: '+sErr,0);
     exit;
     Close;
     end;
+  sDBP := DecryptStr(sDBP,w);}
+  sDBP:=myCrypt( sDBP, coDecrypt, litter, PswLen );
 
-  sDBN:=trim(INI.ReadString('DB','DB_NAME',''));
-  sDBU:=trim(INI.ReadString('DB','USER',''));
-  sDBP:=trim(INI.ReadString('DB','PSW',''));
-
-  sDBP := DecryptStr(sDBP,w);
   i:=pos(chr(10),sDBP);
   setLength(sDBP,i-1);
   ConnectStr := sDBU+'/'+sDBP+'@'+sDBN;
 
-  sImpSaveDir := trim(INI.ReadString('FILE','IMP_SAVE_PATH',FN+'IMP_SAVE\'));
+  sImpSaveDir := trim(INI.ReadString('FILE','IMP_SAVE_PATH',''));
 
-  INI.ReadSectionValues('FILES',MSK);
-  for i := 0 to MSK.Count-1 do
+  SS:=nil;
+  try
+    SS:=TStringList.Create;
+  //INI.ReadSectionValues('FILES',MSK);
+    try
+      INI.ReadSectionValues('FILES',SS);
+      MSK.AddStrings(SS);
+      SS.Clear;
+      INI.ReadSectionValues('DEPENDENCIES',SS);
+      DEP.AddStrings(SS);
+      MSK.Link(DEP);
+    finally
+      SS.Free;
+    end;
+  except
+  end;
+  if MSK.Count=0 then
+    begin
+    result:=False;
+    INI.Free;
+    LogWriteAssured('Не заданы маски файлов!',0);
+    exit;
+    end;
+
+{  for i := 0 to MSK.Count-1 do
     begin
     FN:=MSK.ValueFromIndex[i];
     j:=pos(';',FN);
     FN:=copy(FN,1,j-1);
     if j>0 then MSK.Strings[i]:=FN;
-    end;
-  finally
+    end;}
   INI.Destroy;
+  LogWriteAssured('Чтение настроек контроллера файлового импорта закончено.',1);
+  except
+    try
+      result:=False;
+      INI.Destroy;
+      except
+      end;
   end;
-
   end;
 
 procedure TMain.RunProg; //Основная процедура обработки файлов
   const INIFN = 'files.ini';
-  var Files, TMP_F, ANSW: TStringList;
-      i,j: integer;
-      FName, TMP_FILE, FN: String;
+  var TMP_F, ANSW, SS: TStringList;
+      i,j,n: integer;
+      FName, TMP_FILE, FN, FILES_FN: String;
       SX, ISD: String;
+      bMove: boolean;
   procedure CancelMove;
     var i: integer;
     begin
     for i := 0 to TMP_F.Count-1 do
       begin
       TMP_FILE:=TMP_F.ValueFromIndex[i];
-      FName:=Files.Strings[i];
+      FName:=Files.Items[i].FileName;
       move(TMP_FILE, FName, FMATT, Int);
       Label1.Caption:='Копирование закончено!';
       Update;
-      LogWrite('Файл "'+TMP_FILE+'" возвращен на базу "'+ExtractFilePath(FName)+'".',0);
+      LogWriteAssured('Файл "'+TMP_FILE+'" возвращен на базу "'+ExtractFilePath(FName)+'".',0);
       end;
     end;
   begin
 
   //Поиск файлов, заданных в ini-файле по маскам в MSK.
-  Files:=FindFiles;
+  //Files:=FindFiles;//Просто поиск файлов без попыток их перетаскивания
 
-  LogWrite('Запуск поиска новых файлов.',2);
+  LogWriteAssured('Запуск поиска новых файлов.',2);
 
-  if Files=nil then exit;//Файлы не найдены, выходим
+  try
+    if not FindFiles(Files) then exit;//Файлы не найдены, выходим
+    except on E: Exception do
+      LogWriteAssured('Ошибка при поиске файлов:'#13#10+E.Message,0);
+    end;
 
   TMP_F := TStringList.Create;
   for i :=0 to Files.Count-1 do
     begin
-    TMP_FILE := TMPDIR+ExtractFileName(Files.Strings[i]);
-    FName := Files.Strings[i];
+    if not Files.Items[i].Enabled then Continue;
+    TMP_FILE := TMPDIR+ExtractFileName(Files.Items[i].FileName);
+    FName := Files.Items[i].FileName;
     //Перемещение во временную дирректорию
-    move(FName,TMP_FILE,FMATT,Int);
+    bMove:=move(FName,TMP_FILE,FMATT,Int);
 
     if not CheckFile(TMP_FILE) then
       begin
-      DeleteFile(TMP_FILE);
-      LogWrite('Файл "'+Files.Strings[i]+'" не имеел значащих строк и был удален.',1);
-      for j:=i+1 to Files.Count-1 do
-        if FileExists(Files.Strings[j]) then
-          begin
-          DeleteFile(Files.Strings[j]);
-          SX:=SX+#13#10'  '+Files.Strings[j];
-          end;
-      LogWrite('Так как "'+Files.Strings[i]+'" не имеел значащих строк,'#13#10'следующие файлы были также удалены:'+SX,1);
-      TMP_F.Free;
-      Files.Free;
-      exit;
+      if bMove then
+        begin
+        DeleteFile(TMP_FILE);//Удаляем текущий файл из временной дирректории
+        LogWriteAssured('Файл "'+Files.Items[i].FileName+'" не имеел значащих строк и был удален.',1);
+        end
+        else
+        LogWriteAssured('Файл "'+Files.Items[i].FileName+'" не был найден.',1);
+      //Удаляем подчиненные файлы из дирректории забора файлов
+      SX:='';
+      try
+        SS:=TStringList.Create;
+        try
+          Files.FindAllChild(i,SS);
+          for j:=0 to SS.Count-1 do
+            if FileExists(SS.Strings[j]) then
+              begin
+              DeleteFile(SS.Strings[j]);
+              SX:=SX+#13#10'  '+SS.Strings[j];
+              end;
+        finally
+          SS.Free;
+        end;
+      except
       end;
-    LogWrite('Найдены новые файлы. Запуск программы импорта.',0);
+      if SX<>'' then
+        LogWriteAssured('Так как "'+Files.Items[i].FileName+'" не имеел значащих строк,'#13#10'следующие файлы были также удалены:'+SX,1);
+//      TMP_F.Free;
+//      Files.Clear;
+      //exit;
+      continue;
+      end;
+    LogWriteAssured('Найден новыq файл "'+FName+'".',1);
     //Вычисление дирректории для бекапа
-    SX:=FormatDateTime('dd.mm.yyyy hh:nn:ss', now());//DateTimeToStr(now());
-    for j:=1 to length(SX) do
-      case SX[j] of
-        '0'..'9': ;
-        ' ': SX[j]:='\';
-        ':': SX[j]:='-';
-        '/','\','.': SX[j]:='.'
-        else SX[j]:='-';
+    if sImpSaveDir<>'' then
+      begin
+      SX:=FormatDateTime('dd.mm.yyyy hh:nn:ss', now());//DateTimeToStr(now());
+      for j:=1 to length(SX) do
+        case SX[j] of
+          '0'..'9': ;
+          ' ': SX[j]:='\';
+          ':': SX[j]:='-';
+          '/','\','.': SX[j]:='.'
+          else SX[j]:='-';
+          end;
+
+      ISD := sImpSaveDir+'IMP_'+SX+'\';//Дирректория для бекапа
+
+      SX:=ExtractFileName(TMP_FILE);   //Имя файла для бекапирования
+      if SaveFile(TMP_FILE, SX, ISD) then//Бекапим из временной дирректории
+        LogWriteAssured('Создана резервная копия файла "'+SX+'"  в директории "'+sImpSaveDir+'". ',1)
+        else
+        LogWriteAssured('Файл "'+SX+'" не забекапился. '+FERR,1);
       end;
-
-    ISD := sImpSaveDir+'IMP_'+SX+'\';//Дирректория для бекапа
-
-    SX:=ExtractFileName(TMP_FILE);   //Имя файла для бекапирования
-    if SaveFile(TMP_FILE, SX, ISD) then//Бекапим из временной дирректории
-      LogWrite('Создана резервная копия файла "'+SX+'"  в директории "'+sImpSaveDir+'". ',1)
-      else
-      LogWrite('Файл "'+SX+'" не забекапился. '+FERR,1);
 
     //Вносим изменение в список файлов, там будут файлы из временной дирректории
-    TMP_F.Add( 'F' + IntToStr(i+1) + '=' + TMP_FILE );
+    //TMP_F.Add( 'F' + IntToStr(i+1) + '=' + TMP_FILE );
+    TMP_F.Add( Files.Items[i].FileAttr.F + '=' + TMP_FILE )
     end;
 
-  if TMP_F.Count>0 then
+  if (TMP_F.Count>0) and (ProgramName<>'') then
     begin
     //Сохраняем список файлов для использования программой импорта
-    TMP_F.SaveToFile(FN+INIFN);
+    if GrpID='' then
+      FILES_FN := INIFN
+      else
+      FILES_FN := AddSuffixToFileName(INIFN,GrpID);
+    TMP_F.SaveToFile(FN+FILES_FN);
     //Запускаем программу импорта с указанием строки подключения и списка файлов
     try
-      LogWrite('Запуск "'+ProgramName+' '+sDBU+'/***@'+sDBN+' '+INIFN+'".',2);
-      RunIMP(ProgramName,ConnectStr,INIFN);
-      LogWrite('Отработала программа импоорта "'+ProgramName+'".',2);
-      if FileExists( AnswerLog ) then
+      LogWriteAssured('Запуск "'+ProgramName+' '+sDBU+'/***@'+sDBN+' '+INIFN+'".',2);
+      RunIMP(ProgramName,ConnectStr,FILES_FN);
+      LogWriteAssured('Отработала программа импоорта "'+ProgramName+'".',2);
+      if ProgWait and FileExists( AnswerLog ) then
         begin
-        LogWrite('Получен файл ответа "'+ProgramName+'".',1);
+        LogWriteAssured('Получен файл ответа "'+ProgramName+'".',1);
         ANSW := nil;
         try
         ANSW := TStringList.Create;
@@ -447,21 +680,21 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
           ANSW.CaseSensitive:=False;
           ANSW.LoadFromFile(AnswerLog);
           DeleteFile(AnswerLog);
-          for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
+          for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Items[i].FileName+'";';
           SX := UpperCase(trim(ANSW.Values['SUCCESS']));
-          LogWrite('Получен ответ от программы импорта: SUCCESS="'+SX+'".',1);
+          LogWriteAssured('Получен ответ от программы импорта: SUCCESS="'+SX+'".',1);
           if (SX = 'YES') or (SX = 'Y') or (SX = 'OK') or (SX = '1') then
             begin
             setLength(SX,0);
-            for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Strings[i]+'";';
+            for i := 0 to Files.Count-1 do SX:=SX+chr(10)+'  "'+Files.Items[i].FileName+'";';
             if Length(SX)>0 then SX[Length(SX)] := chr(10);
-            LogWrite('Файлы:' + SX + 'были удачно импортированы в базу "'+sDBN+'".',0);
+            LogWriteAssured('Файлы:' + SX + 'были удачно импортированы в базу "'+sDBN+'".',0);
             end
             else
             begin
-            LogWrite('Программа импорта закончилась с ошибками.',0);
+            LogWriteAssured('Программа импорта закончилась с ошибками.',0);
             SX := ANSW.Text;
-            LogWrite('Файл ответа:'+#13#10+SX,1);
+            LogWriteAssured('Файл ответа:'+#13#10+SX,1);
             i:=0;
             if LogStatus=0 then
               repeat
@@ -477,8 +710,9 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
         end
         else
         begin
-        LogWrite('Не получен файл ответа "'+AnswerLog+'"!',0);
-        raise EMyError01.Create('Не получен файл ответа "'+AnswerLog+'"!');
+        if ProgWait and (AnswerLog<>'') then
+          LogWriteAssured('Не получен файл ответа "'+AnswerLog+'"!',0);
+        //raise EMyError01.Create('Не получен файл ответа "'+AnswerLog+'"!');
         end;
       except
         on E: EMyError01 do
@@ -487,22 +721,34 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
           end;
         on E: Exception do
           begin
-          LogWrite('Не могу запустить программу импорта файлов "'+ProgramName+'". Ошибка: '+E.Message,0);
+          LogWriteAssured('Не могу запустить программу импорта файлов "'+ProgramName+'". Ошибка: '+E.Message,0);
           CancelMove;
           end;
       end;
     end;
-  Files.Free;
+  Files.Clear;
   TMP_F.Free
   end;
 
 procedure TMain.Timer1Timer(Sender: TObject);
+  var bb: boolean;
   begin
   Timer1.Enabled:=False;
-  INIT;
-  RunProg;
-  Timer2.Interval:=SH_INT;
-  Timer2.Enabled:=True;
+  bb:=INIT;
+  if bb then
+    begin
+    RunProg;
+    Timer2.Interval:=SH_INT;
+    Timer2.Enabled:=True;
+    end
+    else
+    begin
+    if LogEnable then
+      ErrForm.ShowMessage('Ошибка инициализации см.LOG!)')
+      else
+      ErrForm.ShowMessage('Не могу открыть LOG!');
+    Timer3.Enabled:=True;
+    end;
   end;
 
 procedure TMain.Timer2Timer(Sender: TObject);
@@ -510,7 +756,7 @@ procedure TMain.Timer2Timer(Sender: TObject);
      TT: integer;
   begin
   T:=now();
-  LogWrite('Отработка очередного такта (период: '+FormatDateTime('HH:nn:ss',Timer2.Interval/(24 * 60 * 60 * 1000))+').',2);
+  LogWriteAssured('Отработка очередного такта (период: '+FormatDateTime('HH:nn:ss',Timer2.Interval/(24 * 60 * 60 * 1000))+').',2);
   LogHeapStatus(2);
   TT:=trunc(frac(T)*24*60*60);
   if (TT>=SH_BGN) and (TT<=SH_END) then
@@ -524,7 +770,7 @@ procedure TMain.Timer2Timer(Sender: TObject);
         if LogStatus=1 then LogHeapStatus(1);
         TrackBar1.Visible := True;
         TrackBar1.Min := SH_BGN;
-        LogWrite('Перехожу в режим периодического поиска новых файлов (период: '+FormatDateTime('HH:nn:ss',Timer2.Interval/(24 * 60 * 60 * 1000))+').',1);
+        LogWriteAssured('Перехожу в режим периодического поиска новых файлов (период: '+FormatDateTime('HH:nn:ss',Timer2.Interval/(24 * 60 * 60 * 1000))+').',1);
         end;
       TrackBar1.Position := trunc(frac(now())*24*60*60);
       repeat
@@ -535,7 +781,7 @@ procedure TMain.Timer2Timer(Sender: TObject);
         begin
         LogHeapStatus(1);
         TrackBar1.Visible:=False;
-        LogWrite('Перехожу в режим сна.',1);
+        LogWriteAssured('Перехожу в режим сна.',1);
         Label1.Caption:='Режим сна.';
         Update;
         end
@@ -556,17 +802,24 @@ procedure TMain.Timer2Timer(Sender: TObject);
 
 procedure TMain.FormCreate(Sender: TObject);
 begin
-MSK:=TStringList.Create;
+MSK:=TMsk.Create;
+DEP:=TDep.Create;
+Files:=TFoundFiles.Create;
 end;
 
 procedure TMain.FormDestroy(Sender: TObject);
 begin
 MSK.Free;
+DEP.Free;
+Files.Free;
 end;
 
 procedure TMain.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
-LogWrite('Закрытие контроллера импорта файлов.',0);
+Timer1.Enabled := False;
+Timer2.Enabled := False;
+Timer3.Enabled := False;
+LogWriteAssured('Закрытие контроллера импорта файлов.',0);
 end;
 
 procedure TMain.FormShow(Sender: TObject);
@@ -575,6 +828,12 @@ Label1.Caption:='Старт!';
 Update;
 end;
 
+procedure TMain.Timer3Timer(Sender: TObject);
+begin
+Close;
+end;
+
 begin
 T1:=now();
+
 end.
