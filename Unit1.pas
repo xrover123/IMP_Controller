@@ -54,7 +54,6 @@ type
     ProgramName: String;
     RunProgTime: integer;
     AnswerLog: String;
-    LogStatus: Integer;
     { Private declarations }
   public
     { Public declarations }
@@ -67,6 +66,7 @@ var
   Main: TMain;
   T1,T2: TDateTime;
   MainConfig: String;
+  LogStatus: Integer;
   hMutexProg: THandle;
   type EMyError01 = class(Exception);
 
@@ -191,9 +191,9 @@ procedure TMain.LogWrite(const S: String; status: integer);
       rewrite(LOG);
     //WriteLN(LOG,FormatDateTime('dd.mm.yyyy HH:nn:ss', Now)+' '+S);
     if GrpID='' then
-      X:=' '
+      X:=' Controller: '
       else
-      X:=' ('+GrpID+') ';
+      X:=' ('+GrpID+') Controller: ';
     WriteLN(LOG,DateTimeToStr(Now)+X+S);
   finally
     try
@@ -274,7 +274,6 @@ function TMain.FindFiles(F: TFoundFiles): boolean;
       i: integer;
   begin
   F.Clear;
-  GrpID := '';
   //После этого времени остальные файлы группы будут ожидаться per секунд
   StartTime := now();
   for i := 0 to MSK.Count-1 do
@@ -559,7 +558,7 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
   var TMP_F, ANSW, SS: TStringList;
       i,j,n: integer;
       FName, TMP_FILE, FN, FILES_FN: String;
-      SX, ISD: String;
+      SX, BackupDir : String;
       bMove: boolean;
   procedure CancelMove;
     var i: integer;
@@ -575,14 +574,32 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
       end;
     end;
   begin
-
+  GrpID := '';
   //Поиск файлов, заданных в ini-файле по маскам в MSK.
   //Files:=FindFiles;//Просто поиск файлов без попыток их перетаскивания
 
   LogWriteAssured('Запуск поиска новых файлов.',2);
 
+  if sImpSaveDir<>'' then
+    begin
+    SX:=FormatDateTime('dd.mm.yyyy hh:nn:ss', now());//DateTimeToStr(now());
+    for j:=1 to length(SX) do
+      case SX[j] of
+        '0'..'9': ;
+        ' ': SX[j]:='\';
+        ':': SX[j]:='-';
+        '/','\','.': SX[j]:='.'
+        else SX[j]:='-';
+        end;
+      BackupDir := sImpSaveDir+'IMP_'+SX+'\';//Дирректория для бекапа
+    end;
+
   try
-    if not FindFiles(Files) then exit;//Файлы не найдены, выходим
+    if not FindFiles(Files) then
+      begin
+      GrpID := '';
+      exit;//Файлы не найдены, выходим
+      end;
     except on E: Exception do
       LogWriteAssured('Ошибка при поиске файлов:'#13#10+E.Message,0);
     end;
@@ -641,20 +658,8 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
     //Вычисление дирректории для бекапа
     if sImpSaveDir<>'' then
       begin
-      SX:=FormatDateTime('dd.mm.yyyy hh:nn:ss', now());//DateTimeToStr(now());
-      for j:=1 to length(SX) do
-        case SX[j] of
-          '0'..'9': ;
-          ' ': SX[j]:='\';
-          ':': SX[j]:='-';
-          '/','\','.': SX[j]:='.'
-          else SX[j]:='-';
-          end;
-
-      ISD := sImpSaveDir+'IMP_'+SX+'\';//Дирректория для бекапа
-
       SX:=ExtractFileName(TMP_FILE);   //Имя файла для бекапирования
-      if SaveFile(TMP_FILE, SX, ISD) then//Бекапим из временной дирректории
+      if SaveFile(TMP_FILE, SX, BackupDir) then//Бекапим из временной дирректории
         LogWriteAssured('Создана резервная копия файла "'+SX+'"  в директории "'+sImpSaveDir+'". ',1)
         else
         LogWriteAssured('Файл "'+SX+'" не забекапился. '+FERR,1);
@@ -736,6 +741,7 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
     end;
   Files.Clear;
   TMP_F.Free;
+  GrpID := '';
   Label1.Caption := 'Режим поиска файлов.'; Update;
   end;
 
