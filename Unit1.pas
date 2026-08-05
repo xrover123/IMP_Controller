@@ -505,10 +505,9 @@ function TMain.INIT: boolean;
     Close;
     end;
   sDBP := DecryptStr(sDBP,w);}
+
   sDBP:=myCrypt( sDBP, coDecrypt, litter, PswLen );
 
-  i:=pos(chr(10),sDBP);
-  setLength(sDBP,i-1);
   ConnectStr := sDBU+'/'+sDBP+'@'+sDBN;
 
   sImpSaveDir := trim(INI.ReadString('FILE','IMP_SAVE_PATH',''));
