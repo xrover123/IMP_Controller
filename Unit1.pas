@@ -132,11 +132,6 @@ begin
   end;
 end;
 
-
-
-function GetPC: word; stdcall;
-  external 'NetParam.dll' name 'GetPCCode';
-
 function GetTime(const S: String; var sMSG: String): TDateTime;
   const sERR = 'Неправильный формат времени';
   var i: integer;
@@ -316,6 +311,13 @@ procedure TMain.RunIMP(const FN,Conn, Fls: String);
   begin
   S:=' '+IntToStr(LogStatus);
   if GrpID<>'' then S:=S+' '+GrpID;
+  {
+  Параметры:
+    1 - строка присоединения к БД,
+    2 - имя файла списка файлов импорта,
+    3 - статус логгирования,
+    4 - идентификатор группы файлов.
+  }
   RunAndWaitUnicode(FN, Conn+' '+Fls+S, ProgWait)
   end;
 
