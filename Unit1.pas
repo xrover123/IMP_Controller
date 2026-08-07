@@ -15,6 +15,7 @@ type
     TrackBar1: TTrackBar;
     Label1: TLabel;
     Timer3: TTimer;
+    Button1: TButton;
     procedure Timer1Timer(Sender: TObject);
     function FindFiles(F: TFoundFiles): boolean;
     //function FindFiles: TStringList;
@@ -31,6 +32,7 @@ type
     procedure LogHeapStatus(status: integer);
     procedure FormShow(Sender: TObject);
     procedure Timer3Timer(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
   private
     ProgWait: Boolean;
     LogEnable: Boolean;
@@ -72,7 +74,7 @@ var
 
 implementation
 uses Unit2, crypt, SearchFileByMask, psapi{, EasyCript;//w := GetPC;//GetCriptCode;},
-  ShowErr, MutexHash;
+  ShowErr, MutexHash, Unit4;
 {$R *.dfm}
 
 function AddSuffixToFileName(const FileName, Suffix: string): string;
@@ -202,6 +204,8 @@ procedure TMain.LogWrite(const S: String; status: integer);
 procedure TMain.LogWriteAssured(const sMSG: String; status: integer);
 var WaitRes: DWORD;
 begin
+  if Form4.Visible then
+    Form4.RichEdit1.Lines.Add(DateTimeToStr(now())+' '+intToStr(status)+' '+sMSG);
   if (status>LogStatus) or (not LogEnable) then exit;
   if hMutexLog = 0 then
     Exit;
@@ -266,17 +270,29 @@ end;
 
 function TMain.FindFiles(F: TFoundFiles): boolean;
   var S: String;
-      i: integer;
+      i,j: integer;
   begin
   F.Clear;
   //После этого времени остальные файлы группы будут ожидаться per секунд
   StartTime := now();
   for i := 0 to MSK.Count-1 do
     begin
+    {
+    int интервал между попытками найти файл,
+    per период времени во время которого ищутся следующие файлы.
+    Если GrpID еще пуст то ожидания не происходит.
+    }
     S:=SearchFileTS_reliably(MSK.Items[i].M,GrpID,StartTime,int,per);
     if S<>'' then F.Add(S,MSK.Items[i]);
     end;
   result := (F.Count > 0);
+  if Form4.Visible then
+    begin
+    Form4.RichEdit1.Lines.Add('Найдено '+IntToStr(F.Count)+' файла:');
+    for i:=0 to F.Count-1 do
+      Form4.RichEdit1.Lines.Add('  '+F.Items[i].FileName);
+    end;
+
   end;
 {
 function TMain.FindFiles: TStringList;
@@ -679,6 +695,8 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
       else
       FILES_FN := AddSuffixToFileName(INIFN,GrpID);
     TMP_F.SaveToFile(FN+FILES_FN);
+
+
     //Запускаем программу импорта с указанием строки подключения и списка файлов
     try
       LogWriteAssured('Запуск "'+ProgramName+' '+sDBU+'/***@'+sDBN+' '+INIFN+'".',2);
@@ -791,7 +809,12 @@ procedure TMain.Timer2Timer(Sender: TObject);
       TrackBar1.Position := trunc(frac(now())*24*60*60);
       repeat
         RunProg;
-        until SearchFileCount<2;
+        if Form4.Visible then
+          Form4.RichEdit1.Lines.Add('RunProg SearchFileCount='+IntToStr(SearchFileCount));
+        until SearchFileCount<2; {До тех пор, пока найденных по маске файлов будет менньше 2,
+        т.е.  1 найденный файл уже отработан, а те который 2, 3, 4 ... еще предстоит переместить.
+        Кол-во найденных файлов определяется по первому в группе.
+        }
       end
       else if TrackBar1.Visible then
         begin
@@ -849,7 +872,25 @@ begin
 Close;
 end;
 
+procedure TMain.Button1Click(Sender: TObject);
+var i: integer;
 begin
+Form4.Visible:=True;
+with Form4.RichEdit1 do
+  begin
+  Lines.Clear;
+  if Timer2.Enabled then
+    Lines.Add('Timer.Enabled=True')
+    else
+    Lines.Add('Timer.Enabled=False');
+  Lines.Add('Timer.interval='+IntToStr(Timer2.interval));
+  Lines.Add('Маски файлов ('+IntToStr(MSK.Count)+'):');
+  for i:=0 to MSK.Count-1 do
+    Lines.Add('  '+MSK.Items[i].M);
+  end;
+end;
+
+initialization
 T1:=now();
 
 end.

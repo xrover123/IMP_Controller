@@ -9,7 +9,8 @@ uses
   Unit3 in 'Unit3.pas',
   ShowErr in 'ShowErr.pas' {ErrForm},
   MutexHash in 'MutexHash.pas',
-  SysUtils;
+  SysUtils,
+  Unit4 in 'Unit4.pas' {Form4};
 
 {$R *.res}
 
@@ -37,5 +38,6 @@ begin
   Application.Initialize;
   Application.CreateForm(TMain, Main);
   Application.CreateForm(TErrForm, ErrForm);
+  Application.CreateForm(TForm4, Form4);
   Application.Run;
 end.

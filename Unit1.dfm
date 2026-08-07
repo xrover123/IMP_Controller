@@ -339,6 +339,15 @@ object Main: TMain
     TabOrder = 0
     Visible = False
   end
+  object Button1: TButton
+    Left = 400
+    Top = 35
+    Width = 75
+    Height = 25
+    Caption = 'Monitor'
+    TabOrder = 1
+    OnClick = Button1Click
+  end
   object Timer1: TTimer
     Interval = 500
     OnTimer = Timer1Timer
