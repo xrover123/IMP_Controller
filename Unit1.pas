@@ -785,6 +785,14 @@ procedure TMain.Timer1Timer(Sender: TObject);
     end;
   end;
 
+function DayOfWeekISO(const ADate: TDateTime): Integer;
+var
+  d: Integer;
+begin
+  d := DayOfWeek(ADate);      // 1=Вс, 2=Пн, ..., 7=Сб
+  Result := (d + 5) mod 7 + 1; // превращаем в 1=Пн, ..., 7=Вс
+end;
+
 procedure TMain.Timer2Timer(Sender: TObject);
  var T: TDateTime;
      TT: integer;
@@ -795,7 +803,7 @@ procedure TMain.Timer2Timer(Sender: TObject);
   TT:=trunc(frac(T)*24*60*60);
   if (TT>=SH_BGN) and (TT<=SH_END) then
     begin
-    if Days[DayOfWeek(T)] then
+    if Days[DayOfWeekISO(T)] then
       begin;
       Label1.Caption:='Поиск файлов по маскам.';
       Update;
