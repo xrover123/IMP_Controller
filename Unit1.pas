@@ -69,7 +69,7 @@ var
   T1,T2: TDateTime;
   MainConfig: String;
   LogStatus: Integer;
-  hMutexProg: THandle;
+  //hMutexProg: THandle;
   type EMyError01 = class(Exception);
 
 implementation

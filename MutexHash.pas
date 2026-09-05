@@ -148,6 +148,8 @@ procedure CloseMutex;
 begin
 if hMutexProg<>0 then CloseHandle(hMutexProg);
 if hMutexLog<>0 then CloseHandle(hMutexLog);
+hMutexProg := 0;
+hMutexLog := 0;
 end;
 
 initialization
