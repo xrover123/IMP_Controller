@@ -17,23 +17,26 @@ uses
 begin
   hMutexProg:=0;
   hMutexLog:=0;
-  MainConfig:='exchange.ini';
-  case ParamCount of
-    0: if not IsSingleInstance('') then Halt(1);
-    1: begin
-       if not IsSingleInstance('') then Halt(1);
-       if TryStrToInt(ParamStr(1),LogStatus) then LogStatus := 0;
-       end;
-    2: begin
-       if not IsSingleInstance(ParamStr(2)) then Halt(1);
-       if TryStrToInt(ParamStr(1),LogStatus) then LogStatus := 0;
-       end;
-    else
-       begin
-       if not IsSingleInstance(ParamStr(2)) then Halt(1);
-       if TryStrToInt(ParamStr(1),LogStatus) then LogStatus := 0;
-       MainConfig:=ParamStr(3);
-       end;
+  if (ParamCount<>1) or (UpperCase(ParamStr(1))<>'-V') then
+    begin
+    MainConfig:='exchange.ini';
+    case ParamCount of
+      0: if not IsSingleInstance('') then Halt(1);
+      1: begin
+         if not IsSingleInstance('') then Halt(1);
+         if TryStrToInt(ParamStr(1),LogStatus) then LogStatus := 0;
+         end;
+      2: begin
+         if not IsSingleInstance(ParamStr(2)) then Halt(1);
+         if TryStrToInt(ParamStr(1),LogStatus) then LogStatus := 0;
+         end;
+      else
+         begin
+         if not IsSingleInstance(ParamStr(2)) then Halt(1);
+         if TryStrToInt(ParamStr(1),LogStatus) then LogStatus := 0;
+         MainConfig:=ParamStr(3);
+         end;
+      end;
     end;
   Application.Initialize;
   Application.CreateForm(TMain, Main);

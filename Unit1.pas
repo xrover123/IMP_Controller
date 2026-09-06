@@ -6,6 +6,8 @@ uses
   VCLFixes, VCLFixPack, VCLFlickerReduce, Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ExtCtrls, INIFiles, ComCtrls, RXShell, StdCtrls, Unit3;
 
+const VERSION = '3.0';
+
 type TDays = array [1..7] of boolean;
 
 type
@@ -16,6 +18,7 @@ type
     Label1: TLabel;
     Timer3: TTimer;
     Button1: TButton;
+    Label2: TLabel;
     procedure Timer1Timer(Sender: TObject);
     function FindFiles(F: TFoundFiles): boolean;
     //function FindFiles: TStringList;
@@ -768,6 +771,13 @@ procedure TMain.Timer1Timer(Sender: TObject);
   var bb: boolean;
   begin
   Timer1.Enabled:=False;
+  if (ParamCount=1) and (UpperCase(ParamStr(1))='-V') then
+    begin
+    Label2.Visible := True;
+    TrackBar1.Visible := False;
+    Label2.Caption := 'Version '+VERSION;
+    Exit;
+    end;
   bb:=INIT;
   if bb then
     begin
@@ -871,6 +881,7 @@ end;
 
 procedure TMain.FormShow(Sender: TObject);
 begin
+Caption := 'IMP Controller '+VERSION;
 Label1.Caption:='Старт!';
 Update;
 end;
