@@ -330,12 +330,13 @@ object Main: TMain
     AutoSize = False
   end
   object Label2: TLabel
-    Left = 136
+    Left = 8
     Top = 16
-    Width = 217
+    Width = 473
     Height = 13
     Alignment = taCenter
     Caption = 'Label2'
+    Visible = False
   end
   object TrackBar1: TTrackBar
     Left = 0

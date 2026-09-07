@@ -1,5 +1,4 @@
 unit Unit1;
-{$B+}
 interface
 
 uses
@@ -9,6 +8,10 @@ uses
 const VERSION = '3.0';
 
 type TDays = array [1..7] of boolean;
+
+type TSaveALL = record
+       Hash, SaveAll: boolean;
+       end;
 
 type
   TMain = class(TForm)
@@ -36,7 +39,12 @@ type
     procedure FormShow(Sender: TObject);
     procedure Timer3Timer(Sender: TObject);
     procedure Button1Click(Sender: TObject);
+    procedure SaveAllFiles(Group,FileName: String);
   private
+    HashFile: String;
+    HashAlias: TStringList;
+    SaveAllPath: String;
+    isSaveALL: TSaveALL;
     ProgWait: Boolean;
     LogEnable: Boolean;
     MSK: TMsk;//TStringList;
@@ -77,7 +85,7 @@ var
 
 implementation
 uses Unit2, crypt, SearchFileByMask, psapi{, EasyCript;//w := GetPC;//GetCriptCode;},
-  ShowErr, MutexHash, Unit4;
+  ShowErr, MutexHash, Unit4, HASH_SHA256;
 {$R *.dfm}
 
 function AddSuffixToFileName(const FileName, Suffix: string): string;
@@ -488,6 +496,28 @@ function TMain.INIT: boolean;
   WaitMv:=INI.ReadInteger('FILE','IMP_FILE_WAIT_MOVE',60*10); //Ожидание стабильности файла (с)
   WaitMv:=INI.ReadInteger('FILE','IMP_FILE_CHECK_INTERVAL',500); //Ожидание стабильности файла (интервал проверки изменений (мс))
   TMPDIR:=trim(INI.ReadString('FILE','IMP_FILE_MOVE_TMP',ExtractFilePath(ParamStr(0))));
+
+  SaveAllPath:=trim(INI.ReadString('FILE','IMP_ALL_SAVE',''));
+  isSaveAll.SaveAll:=(SaveAllPath<>'');
+  HashFile:=trim(INI.ReadString('FILE','IMP_HASH_ALIAS',''));
+  if (HashFile<>'') and FileExists(HashFile) then
+    begin
+    HashAlias:=TStringList.Create;
+    HashAlias.LoadFromFile(HashFile);
+    if HashAlias.Count=0 then
+      begin
+      HashAlias.Free;
+      HashAlias:=nil;
+      end;
+    end;
+  HashFile:=trim(INI.ReadString('FILE','IMP_FILE_HASH',''));
+  isSaveAll.Hash:=(HashFile<>'');
+  if not isSaveAll.Hash then
+    begin
+    HashAlias.Free;
+    HashAlias:=nil;
+    end;
+
   if not TestFile(TMPDIR+'tst') then
     begin
     result:=False;
@@ -573,6 +603,54 @@ function TMain.INIT: boolean;
   end;
   end;
 
+procedure TMain.SaveAllFiles(Group,FileName: String);
+var S: String;
+    F: TextFile;
+    FNM: String;
+    bb: Boolean;
+function GetAlias(sHASH: String): String;
+  var i: integer;
+  begin
+  if HashAlias = nil then
+    begin
+    result := sHASH;
+    exit;
+    end;
+  for i := 0 to HashAlias.Count-1 do
+    if HashAlias.ValueFromIndex[i]=sHASH then
+      begin
+      result := HashAlias.Names[i];
+      exit
+      end;
+  result := sHASH;
+  end;
+begin
+FNM:=ExtractFileName(FileName);
+bb := (isSaveAll.Hash or isSaveAll.SaveAll) and FileExists(FileName);
+if isSaveAll.Hash then
+  begin
+  if bb then
+    S:=FormatDateTime('dd.mm.yyyy HH:nn:ss', now)+chr(9)+Group+chr(9)+FNM+chr(9)+GetAlias(FileSHA256(FileName))
+    else
+    S:=FormatDateTime('dd.mm.yyyy HH:nn:ss', now)+chr(9)+Group+chr(9)+FNM+chr(9)+'%REMOVED%';
+  AssignFile(F,HashFile);
+  try
+    if FileExists(HashFile) then
+      append(F)
+      else
+      rewrite(F);
+    WriteLn(F,S);
+    finally
+      try
+        CloseFile(F);
+        except
+        end;
+    end;
+  end;
+if bb and isSaveAll.SaveAll then
+  CopyFile(PChar(FileName), PChar(SaveAllPath+FNM), True);
+end;
+
 procedure TMain.RunProg; //Основная процедура обработки файлов
   const INIFN = 'files.ini';
   var TMP_F, ANSW, SS: TStringList;
@@ -633,6 +711,8 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
     //Перемещение во временную дирректорию
     bMove:=move(FName,TMP_FILE,FMATT,Int);
 
+    SaveAllFiles(GrpID,TMP_FILE);
+
     if not CheckFile(TMP_FILE) then
       begin
       Label1.Caption:='Проверка содержания файла дала отрицательный результат.';Update;
@@ -652,6 +732,7 @@ procedure TMain.RunProg; //Основная процедура обработки файлов
           for j:=0 to SS.Count-1 do
             if FileExists(SS.Strings[j]) then
               begin
+              SaveAllFiles(GrpID,SS.Strings[j]);
               DeleteFile(SS.Strings[j]);
               SX:=SX+#13#10'  '+SS.Strings[j];
               end;
@@ -862,6 +943,7 @@ begin
 MSK:=TMsk.Create;
 DEP:=TDep.Create;
 Files:=TFoundFiles.Create;
+HashAlias:=nil;
 end;
 
 procedure TMain.FormDestroy(Sender: TObject);
@@ -869,6 +951,7 @@ begin
 MSK.Free;
 DEP.Free;
 Files.Free;
+HashAlias.Free;
 end;
 
 procedure TMain.FormClose(Sender: TObject; var Action: TCloseAction);
